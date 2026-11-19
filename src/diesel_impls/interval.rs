@@ -128,7 +128,7 @@ impl Display for IntervalFields {
             return Ok(());
         }
         let mut width = 6;
-        while fraction % 10 == 0 {
+        while fraction.is_multiple_of(10) {
             fraction /= 10;
             width -= 1;
         }
