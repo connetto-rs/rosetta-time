@@ -1,6 +1,6 @@
 [package]
 name = "rosetta-time"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Wrappers of jiff's civil Date and Time and of Span providing serde and binary diesel bindings for SQLite and PostgreSQL."
 license = "MIT"
