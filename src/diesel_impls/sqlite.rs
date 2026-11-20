@@ -15,9 +15,6 @@ use super::interval::IntervalFields;
 /// The format of [`DateText`], for reading back the years jiff's ISO 8601
 /// parser refuses.
 const DATE_FORMAT: &str = "%Y-%m-%d";
-/// The format of [`DateTimeText`], for reading back the years jiff's ISO 8601
-/// parser refuses.
-const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f";
 
 /// A date as `YYYY-MM-DD`, with a signed year of at least four digits outside
 /// 0 to 9999, as chrono's `%F` writes it.
@@ -62,40 +59,15 @@ impl Display for TimeText {
     }
 }
 
-/// A datetime as a [`DateText`] and a [`TimeText`] separated by a space, as
-/// chrono's `%F %T%.f` writes it.
-struct DateTimeText(civil::DateTime);
-
-impl Display for DateTimeText {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "{} {}",
-            DateText(self.0.date()),
-            TimeText(self.0.time())
-        )
-    }
-}
-
-/// Reads `text` as ISO 8601, which covers what diesel and SQLite write, and
-/// falls back to `written` for the years outside 0 to 9999 that only the
-/// written form spells with four digits.
-fn parse_iso_or_written<T>(
-    text: &str,
-    written: impl FnOnce(&str) -> Result<T, jiff::Error>,
-) -> Result<T, jiff::Error>
-where
-    T: core::str::FromStr<Err = jiff::Error>,
-{
-    text.parse()
-        .or_else(|error| written(text).map_err(|_| error))
-}
-
+/// Reads ISO 8601, which covers what diesel and SQLite write, and falls back
+/// to `DATE_FORMAT` for the years outside 0 to 9999 that only it spells
+/// with four digits.
 impl FromSql<super::Date, Sqlite> for crate::Date {
     fn from_sql(mut value: SqliteValue<'_, '_, '_>) -> deserialize::Result<Self> {
-        let date = parse_iso_or_written(value.read_text(), |text| {
-            civil::Date::strptime(DATE_FORMAT, text)
-        })?;
+        let text = value.read_text();
+        let date = text
+            .parse()
+            .or_else(|error| civil::Date::strptime(DATE_FORMAT, text).map_err(|_| error))?;
         Ok(Self(date))
     }
 }
@@ -116,22 +88,6 @@ impl FromSql<super::Time, Sqlite> for crate::Time {
 impl ToSql<super::Time, Sqlite> for crate::Time {
     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
         out.set_value(TimeText(self.0).to_string());
-        Ok(IsNull::No)
-    }
-}
-
-impl FromSql<super::Timestamp, Sqlite> for crate::DateTime {
-    fn from_sql(mut value: SqliteValue<'_, '_, '_>) -> deserialize::Result<Self> {
-        let datetime = parse_iso_or_written(value.read_text(), |text| {
-            civil::DateTime::strptime(DATETIME_FORMAT, text)
-        })?;
-        Ok(Self(datetime))
-    }
-}
-
-impl ToSql<super::Timestamp, Sqlite> for crate::DateTime {
-    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Sqlite>) -> serialize::Result {
-        out.set_value(DateTimeText(self.0).to_string());
         Ok(IsNull::No)
     }
 }

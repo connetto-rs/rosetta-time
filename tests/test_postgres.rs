@@ -3,7 +3,7 @@
 
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use rosetta_time::{Date, DateTime, Span, Time};
+use rosetta_time::{Date, Span, Time};
 
 diesel::table! {
     /// A table with one column of each wrapper.
@@ -12,8 +12,6 @@ diesel::table! {
         id -> Integer,
         /// A `DATE` column.
         day -> rosetta_time::diesel_impls::Date,
-        /// A `TIMESTAMP` column.
-        at -> rosetta_time::diesel_impls::Timestamp,
         /// A `TIME` column.
         opens -> rosetta_time::diesel_impls::Time,
         /// An `INTERVAL` column.
@@ -26,7 +24,6 @@ diesel::table! {
 struct Event {
     id: i32,
     day: Date,
-    at: DateTime,
     opens: Time,
     lasts: Option<Span>,
 }
@@ -38,19 +35,19 @@ fn connection() -> PgConnection {
     connection.begin_test_transaction().unwrap();
     diesel::sql_query(
         "CREATE TEMPORARY TABLE events (id INTEGER PRIMARY KEY, day DATE NOT NULL, \
-         at TIMESTAMP NOT NULL, opens TIME NOT NULL, lasts INTERVAL)",
+         opens TIME NOT NULL, lasts INTERVAL)",
     )
     .execute(&mut connection)
     .unwrap();
     connection
 }
 
+/// An event on the date and at the time of `at`, an ISO 8601 datetime.
 fn event(id: i32, at: &str, lasts: Option<&str>) -> Event {
     let at: jiff::civil::DateTime = at.parse().unwrap();
     Event {
         id,
         day: at.date().into(),
-        at: at.into(),
         opens: at.time().into(),
         lasts: lasts.map(|text| text.parse().unwrap()),
     }
@@ -75,8 +72,8 @@ fn test_postgres_round_trip_of_every_wrapper() {
     let events = [
         event(1, "2026-11-19T10:00:00", Some("P1DT2H")),
         event(2, "1999-12-31T23:59:59.999999", Some("-P14M3DT0.000001S")),
-        event(3, "9999-12-31T23:59:59.999999", None),
-        event(4, "-004000-03-01T00:00:00.000001", Some("PT0S")),
+        event(3, "9999-12-31T00:00:00.000001", None),
+        event(4, "-004000-03-01T12:00:00", Some("PT0S")),
     ];
     for event in &events {
         insert(&mut connection, event).unwrap();
@@ -85,16 +82,17 @@ fn test_postgres_round_trip_of_every_wrapper() {
 }
 
 #[test]
-fn test_postgres_floors_datetimes_and_times_to_the_microsecond() {
+fn test_postgres_floors_times_to_the_microsecond() {
     let mut connection = connection();
     insert(
         &mut connection,
         &event(1, "1999-12-31T23:59:59.000000999", None),
     )
     .unwrap();
-    let read = read(&mut connection, 1).unwrap();
-    assert_eq!(read.at.to_string(), "1999-12-31T23:59:59");
-    assert_eq!(read.opens.to_string(), "23:59:59");
+    assert_eq!(
+        read(&mut connection, 1).unwrap().opens.to_string(),
+        "23:59:59"
+    );
 }
 
 #[test]
@@ -187,16 +185,11 @@ fn test_postgres_adds_and_subtracts_intervals() {
     )
     .unwrap();
     let lasts = events::lasts.assume_not_null();
-    let (day_plus, at_plus, opens_minus): (DateTime, DateTime, Time) = events::table
+    let (day_plus, opens_minus): (chrono::NaiveDateTime, Time) = events::table
         .find(1)
-        .select((
-            events::day + lasts,
-            events::at + lasts,
-            events::opens - lasts,
-        ))
+        .select((events::day + lasts, events::opens - lasts))
         .first(&mut connection)
         .unwrap();
-    assert_eq!(day_plus.to_string(), "2026-12-20T02:00:00");
-    assert_eq!(at_plus.to_string(), "2026-12-20T12:00:00");
+    assert_eq!(day_plus.to_string(), "2026-12-20 02:00:00");
     assert_eq!(opens_minus.to_string(), "08:00:00");
 }

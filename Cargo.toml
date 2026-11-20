@@ -2,7 +2,7 @@
 name = "rosetta-time"
 version = "0.1.0"
 edition = "2024"
-description = "Wrappers of jiff's civil Date, Time, DateTime and Span providing serde and binary diesel bindings for SQLite and PostgreSQL."
+description = "Wrappers of jiff's civil Date and Time and of Span providing serde and binary diesel bindings for SQLite and PostgreSQL."
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/connetto-rs/rosetta-time"

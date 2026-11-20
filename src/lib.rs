@@ -97,17 +97,6 @@ wrapper! {
 }
 
 wrapper! {
-    /// A wrapper around [`jiff::civil::DateTime`], a date and wall-clock time
-    /// with no time zone, stored as `TIMESTAMP`.
-    ///
-    /// It displays and parses as an ISO 8601 datetime such as
-    /// `2026-11-19T10:00:00`. PostgreSQL keeps microseconds, so writing to it
-    /// floors the datetime to the microsecond.
-    #[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
-    DateTime(jiff::civil::DateTime) as Timestamp
-}
-
-wrapper! {
     /// A wrapper around [`jiff::Span`], a duration in calendar and clock
     /// units, stored as `INTERVAL`.
     ///
@@ -144,38 +133,24 @@ wrapper! {
     Span(jiff::Span) as Interval
 }
 
-impl DateTime {
-    /// Returns the current wall-clock time in UTC, at the precision of the
-    /// system clock.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use rosetta_time::DateTime;
-    ///
-    /// let now = DateTime::now_utc();
-    /// assert!(now.year() >= 2026);
-    /// ```
-    #[must_use]
-    pub fn now_utc() -> Self {
-        Self(jiff::tz::Offset::UTC.to_datetime(jiff::Timestamp::now()))
-    }
-}
-
 impl Date {
     /// Returns the current date in UTC.
     ///
     /// # Examples
     ///
     /// ```
-    /// use rosetta_time::{Date, DateTime};
+    /// use rosetta_time::Date;
     ///
     /// let today = Date::today_utc();
-    /// assert!(today <= DateTime::now_utc().date().into());
+    /// assert!(today.year() >= 2026);
     /// ```
     #[must_use]
     pub fn today_utc() -> Self {
-        Self(DateTime::now_utc().date())
+        Self(
+            jiff::tz::Offset::UTC
+                .to_datetime(jiff::Timestamp::now())
+                .date(),
+        )
     }
 }
 
@@ -237,23 +212,25 @@ mod tests {
     #[test]
     fn test_display_uses_iso_8601_and_from_str_reads_it_back() {
         let day: Date = "2026-11-19".parse().unwrap();
-        let opens: Time = "09:30".parse().unwrap();
-        let at: DateTime = "2026-11-19 10:00:00.5".parse().unwrap();
+        let opens: Time = "09:30:00.5".parse().unwrap();
         let lasts = span("1 day 2 hours");
         assert_eq!(day.to_string(), "2026-11-19");
-        assert_eq!(opens.to_string(), "09:30:00");
-        assert_eq!(at.to_string(), "2026-11-19T10:00:00.5");
+        assert_eq!(opens.to_string(), "09:30:00.5");
         assert_eq!(lasts.to_string(), "P1DT2H");
-        assert_eq!(at.to_string().parse::<DateTime>().unwrap(), at);
+        assert_eq!(opens.to_string().parse::<Time>().unwrap(), opens);
         assert!("2026-02-30".parse::<Date>().is_err());
     }
 
     #[test]
-    fn test_now_utc_and_today_utc_agree() {
+    fn test_today_utc_counts_days_since_the_unix_epoch() {
+        let unix_days = |date: Date| (*date - jiff::civil::date(1970, 1, 1)).get_days();
         let before = Date::today_utc();
-        let now = DateTime::now_utc();
+        let elapsed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
         let after = Date::today_utc();
-        assert!(before <= Date::from(now.date()) && Date::from(now.date()) <= after);
+        let days = i32::try_from(elapsed.as_secs() / 86_400).unwrap();
+        assert!(unix_days(before) <= days && days <= unix_days(after));
     }
 
     #[test]

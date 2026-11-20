@@ -40,16 +40,6 @@ sql_type! {
 }
 
 sql_type! {
-    /// The SQL type of [`crate::DateTime`].
-    ///
-    /// PostgreSQL's `timestamp`, sent as microseconds since
-    /// 2000-01-01 00:00:00. SQLite `TEXT` holding `YYYY-MM-DD HH:MM:SS` with
-    /// 3, 6 or 9 fractional digits when the fraction is not zero, as diesel
-    /// writes `chrono::NaiveDateTime`.
-    Timestamp, oid = 1114, array_oid = 1115
-}
-
-sql_type! {
     /// The SQL type of [`crate::Span`].
     ///
     /// PostgreSQL's `interval`, sent as months, days and microseconds. SQLite
@@ -63,19 +53,20 @@ sql_type! {
     Interval, oid = 1186, array_oid = 1187
 }
 
-// The text written for these three orders alphabetically as the values do,
-// for the years 0 to 9999.
+// The text written for these two orders alphabetically as the values do, for
+// the years 0 to 9999.
 impl diesel::sql_types::SqlOrd for Date {}
 impl diesel::sql_types::SqlOrd for Time {}
-impl diesel::sql_types::SqlOrd for Timestamp {}
 
-/// Declares `$name ± Interval`, typed as PostgreSQL and diesel's own date and
-/// time types type it. `diesel::table!` gives `+` and `-` to every column
-/// whose SQL type is named `Date`, `Time` or `Timestamp`, and these impls
-/// type them. SQLite has no interval arithmetic, so these expressions only
-/// mean something on PostgreSQL.
+/// Declares `$name ± Interval`, typed as PostgreSQL types it. `diesel::table!`
+/// gives `+` and `-` to every column whose SQL type is named `Date` or `Time`,
+/// so these impls must exist for those columns to compile. PostgreSQL answers
+/// `date + interval` with a `timestamp`, which this crate has no wrapper for,
+/// so that expression is typed as diesel's own `Timestamp`. SQLite has no
+/// interval arithmetic, so these expressions only mean something on
+/// PostgreSQL.
 macro_rules! interval_arithmetic {
-    ($($name:ident => $output:ident),*) => {
+    ($($name:ident => $output:ty),*) => {
         $(
             impl diesel::sql_types::ops::Add for $name {
                 type Rhs = Interval;
@@ -90,4 +81,4 @@ macro_rules! interval_arithmetic {
     };
 }
 
-interval_arithmetic!(Date => Timestamp, Time => Time, Timestamp => Timestamp);
+interval_arithmetic!(Date => diesel::sql_types::Timestamp, Time => Time);

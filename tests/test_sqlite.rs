@@ -4,7 +4,7 @@
 
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
-use rosetta_time::{Date, DateTime, Span, Time};
+use rosetta_time::{Date, Span, Time};
 
 diesel::table! {
     /// A table with one column of each wrapper.
@@ -13,8 +13,6 @@ diesel::table! {
         id -> Integer,
         /// A `DATE` column.
         day -> rosetta_time::diesel_impls::Date,
-        /// A `TIMESTAMP` column.
-        at -> rosetta_time::diesel_impls::Timestamp,
         /// A `TIME` column.
         opens -> rosetta_time::diesel_impls::Time,
         /// An `INTERVAL` column.
@@ -32,8 +30,6 @@ mod text {
             id -> Integer,
             /// The text of `day`.
             day -> Text,
-            /// The text of `at`.
-            at -> Text,
             /// The text of `opens`.
             opens -> Text,
             /// The text of `lasts`.
@@ -52,8 +48,6 @@ mod chrono_types {
             id -> Integer,
             /// `day` as a `chrono::NaiveDate`.
             day -> Date,
-            /// `at` as a `chrono::NaiveDateTime`.
-            at -> Timestamp,
             /// `opens` as a `chrono::NaiveTime`.
             opens -> Time,
         }
@@ -65,7 +59,6 @@ mod chrono_types {
 struct Event {
     id: i32,
     day: Date,
-    at: DateTime,
     opens: Time,
     lasts: Option<Span>,
 }
@@ -75,7 +68,6 @@ fn connection() -> SqliteConnection {
     diesel::sql_query(
         "CREATE TABLE events (id INTEGER PRIMARY KEY, \
          day TEXT NOT NULL DEFAULT CURRENT_DATE, \
-         at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, \
          opens TEXT NOT NULL DEFAULT CURRENT_TIME, \
          lasts TEXT)",
     )
@@ -84,12 +76,12 @@ fn connection() -> SqliteConnection {
     connection
 }
 
+/// An event on the date and at the time of `at`, an ISO 8601 datetime.
 fn event(id: i32, at: &str, lasts: Option<&str>) -> Event {
     let at: jiff::civil::DateTime = at.parse().unwrap();
     Event {
         id,
         day: at.date().into(),
-        at: at.into(),
         opens: at.time().into(),
         lasts: lasts.map(|text| text.parse().unwrap()),
     }
@@ -108,10 +100,10 @@ fn read(connection: &mut SqliteConnection, id: i32) -> QueryResult<Event> {
         .first(connection)
 }
 
-fn read_text(connection: &mut SqliteConnection, id: i32) -> (String, String, String) {
+fn read_text(connection: &mut SqliteConnection, id: i32) -> (String, String) {
     text::events::table
         .find(id)
-        .select((text::events::day, text::events::at, text::events::opens))
+        .select((text::events::day, text::events::opens))
         .first(connection)
         .unwrap()
 }
@@ -158,7 +150,6 @@ fn test_sqlite_writes_and_reads_the_text_diesel_uses_for_chrono() {
             .values((
                 chrono_types::events::id.eq(id + 100),
                 chrono_types::events::day.eq(chrono_datetime.date()),
-                chrono_types::events::at.eq(chrono_datetime),
                 chrono_types::events::opens.eq(chrono_datetime.time()),
             ))
             .execute(&mut connection)
@@ -175,38 +166,30 @@ fn test_sqlite_writes_and_reads_the_text_diesel_uses_for_chrono() {
                 ..written
             }
         );
-        let read_by_chrono: (chrono::NaiveDate, chrono::NaiveDateTime, chrono::NaiveTime) =
-            chrono_types::events::table
-                .find(id)
-                .select((
-                    chrono_types::events::day,
-                    chrono_types::events::at,
-                    chrono_types::events::opens,
-                ))
-                .first(&mut connection)
-                .unwrap();
+        let read_by_chrono: (chrono::NaiveDate, chrono::NaiveTime) = chrono_types::events::table
+            .find(id)
+            .select((chrono_types::events::day, chrono_types::events::opens))
+            .first(&mut connection)
+            .unwrap();
         assert_eq!(
             read_by_chrono,
-            (
-                chrono_datetime.date(),
-                chrono_datetime,
-                chrono_datetime.time()
-            )
+            (chrono_datetime.date(), chrono_datetime.time())
         );
     }
 }
 
 #[test]
-fn test_sqlite_reads_its_own_current_date_time_and_timestamp() {
+fn test_sqlite_reads_its_own_current_date_and_time() {
     let mut connection = connection();
+    let before = Date::today_utc();
     diesel::insert_into(events::table)
         .values(events::id.eq(1))
         .execute(&mut connection)
         .unwrap();
+    let after = Date::today_utc();
     let read = read(&mut connection, 1).unwrap();
-    assert_eq!(*read.day, read.at.date());
-    assert_eq!(*read.opens, read.at.time());
-    assert!(read.at <= DateTime::now_utc());
+    assert!(before <= read.day && read.day <= after);
+    assert_eq!(read.opens.subsec_nanosecond(), 0);
 }
 
 #[test]
