@@ -266,12 +266,9 @@ mod tests {
             .unwrap();
         let after = nanoseconds_of_day(Time::now_utc());
         let expected = i128::try_from(elapsed.as_nanos()).unwrap() % NANOSECONDS_PER_DAY;
-        let crossed_midnight = after < before;
-        assert!(if crossed_midnight {
-            before <= expected || expected <= after
-        } else {
-            before <= expected && expected <= after
-        });
+        let since_before =
+            |nanoseconds: i128| (nanoseconds - before).rem_euclid(NANOSECONDS_PER_DAY);
+        assert!(since_before(expected) <= since_before(after));
     }
 
     #[test]
