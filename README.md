@@ -21,7 +21,7 @@ PostgreSQL uses its binary encodings. The SQLite text of dates and times is what
 
 * **`diesel`** enables the SQL types, **`postgres`** and **`sqlite`** their backends.
 * **`serde`** serializes each wrapper as jiff's ISO 8601 text.
-* **`wasm`** makes `Date::today_utc()` work on `wasm32-unknown-unknown`.
+* **`wasm`** makes `Date::today_utc()` and `Time::now_utc()` work on `wasm32-unknown-unknown`.
 
 ## Example
 

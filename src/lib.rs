@@ -154,6 +154,27 @@ impl Date {
     }
 }
 
+impl Time {
+    /// Returns the current time of day in UTC.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rosetta_time::Time;
+    ///
+    /// let opens = Time::now_utc();
+    /// assert_eq!(opens.to_string().parse::<Time>().unwrap(), opens);
+    /// ```
+    #[must_use]
+    pub fn now_utc() -> Self {
+        Self(
+            jiff::tz::Offset::UTC
+                .to_datetime(jiff::Timestamp::now())
+                .time(),
+        )
+    }
+}
+
 /// Nanoseconds in a day of 24 hours.
 const NANOSECONDS_PER_DAY: i128 = 86_400 * 1_000_000_000;
 
@@ -231,6 +252,23 @@ mod tests {
         let after = Date::today_utc();
         let days = i32::try_from(elapsed.as_secs() / 86_400).unwrap();
         assert!(unix_days(before) <= days && days <= unix_days(after));
+    }
+
+    #[test]
+    fn test_now_utc_is_the_time_of_day_since_the_unix_epoch() {
+        let nanoseconds_of_day = |time: Time| {
+            time.duration_since(jiff::civil::Time::midnight())
+                .as_nanos()
+        };
+        let before = nanoseconds_of_day(Time::now_utc());
+        let elapsed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let after = nanoseconds_of_day(Time::now_utc());
+        let expected = i128::try_from(elapsed.as_nanos()).unwrap() % NANOSECONDS_PER_DAY;
+        let since_before =
+            |nanoseconds: i128| (nanoseconds - before).rem_euclid(NANOSECONDS_PER_DAY);
+        assert!(since_before(expected) <= since_before(after));
     }
 
     #[test]
